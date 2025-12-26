@@ -25,7 +25,11 @@ export class PortalService {
         if (!client) return [];
 
         return this.prisma.invoice.findMany({
-            where: { clientId: client.id, businessId: client.businessId },
+            where: {
+                clientId: client.id,
+                businessId: client.businessId,
+                status: { not: 'DRAFT' },
+            },
             orderBy: { createdAt: 'desc' },
         });
     }
