@@ -58,18 +58,28 @@ export class InvoiceService {
     }
 
     async updateStatus(id: string, businessId: string, status: any) {
+        console.log(`InvoiceService: Updating status for invoice ${id} to ${status}`);
         const result = await this.prisma.invoice.updateMany({
             where: { id, businessId },
             data: { status },
         });
 
         if (status === 'SENT') {
+            console.log(`InvoiceService: Status is SENT, fetching invoice details for notification...`);
             const invoice = await this.prisma.invoice.findFirst({
                 where: { id, businessId },
                 include: { client: true, business: true }
             });
 
-            if (invoice && invoice.client && invoice.client.userId) {
+            if (!invoice) {
+                console.log(`InvoiceService: Invoice ${id} not found after update!`);
+            } else if (!invoice.client) {
+                console.log(`InvoiceService: Client not found for invoice ${id}`);
+            } else if (!invoice.client.userId) {
+                console.log(`InvoiceService: Client ${invoice.client.name} has no userId (onboarding incomplete?)`);
+            } else {
+                console.log(`InvoiceService: All checks passed. Sending notification to user ${invoice.client.userId} and email to ${invoice.client.email}`);
+
                 // 1. Create In-App Notification
                 await this.notificationService.create({
                     type: 'INVOICE_SENT',

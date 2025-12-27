@@ -1,25 +1,43 @@
 import { Injectable } from '@nestjs/common';
-import { Resend } from 'resend';
+import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class MailService {
-    private resend: Resend;
+    private transporter: nodemailer.Transporter;
 
     constructor() {
-        this.resend = new Resend(process.env.RESEND_API_KEY || 're_Lo69GpwV_DyhC3jYzv5Uu6bDAg7N91DpX');
+        const emailUser = process.env.EMAIL_USER;
+        const emailPass = process.env.EMAIL_PASS;
+
+        console.log('MailService: Initializing with Nodemailer');
+        console.log('MailService: EMAIL_USER:', emailUser ? 'FOUND' : 'MISSING');
+        console.log('MailService: EMAIL_PASS:', emailPass ? 'FOUND' : 'MISSING');
+
+        this.transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: emailUser,
+                pass: emailPass,
+            },
+        });
     }
 
     async sendEmail(to: string, subject: string, html: string) {
+        const from = process.env.EMAIL_USER || 'noreply@gmail.com';
+        console.log(`MailService: Attempting to send email via Nodemailer`);
+        console.log(`MailService: From: ${from}, To: ${to}, Subject: ${subject}`);
+
         try {
-            await this.resend.emails.send({
-                from: 'onboarding@resend.dev', // Use verified domain in production
+            const info = await this.transporter.sendMail({
+                from,
                 to,
                 subject,
                 html,
             });
-            return { success: true };
+            console.log('MailService: Email sent successfully. MessageId:', info.messageId);
+            return { success: true, data: info };
         } catch (error) {
-            console.error('Failed to send email', error);
+            console.error('MailService: ERROR sending email:', error);
             return { success: false, error };
         }
     }
