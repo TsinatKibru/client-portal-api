@@ -20,6 +20,7 @@ export class ProjectService {
         return this.prisma.project.findMany({
             where: { businessId },
             include: { client: true },
+            orderBy: { createdAt: 'desc' },
         });
     }
 

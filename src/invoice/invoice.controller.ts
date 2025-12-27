@@ -28,6 +28,11 @@ export class InvoiceController {
         return this.invoiceService.updateStatus(id, req.user.businessId, body.status);
     }
 
+    @Patch(':id')
+    async update(@Param('id') id: string, @Request() req, @Body() body: any) {
+        return this.invoiceService.update(id, req.user.businessId, body);
+    }
+
     @Get(':id/pdf')
     async downloadPdf(@Param('id') id: string, @Request() req, @Res() res: Response) {
         const buffer = await this.invoiceService.generatePdf(id, req.user.businessId);

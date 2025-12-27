@@ -57,6 +57,42 @@ export class InvoiceService {
         return invoice;
     }
 
+    async update(id: string, businessId: string, data: any) {
+        const invoice = await this.prisma.invoice.findFirst({
+            where: { id, businessId }
+        });
+
+        if (!invoice) throw new NotFoundException('Invoice not found');
+        if (invoice.status !== 'DRAFT') {
+            throw new Error('Only draft invoices can be edited');
+        }
+
+        const lineItems = data.lineItems || [];
+        let subtotal = 0;
+        let totalTax = 0;
+
+        lineItems.forEach((item: any) => {
+            const rowTotal = (item.quantity || 0) * (item.rate || 0);
+            subtotal += rowTotal;
+            totalTax += rowTotal * ((item.tax || 0) / 100);
+        });
+
+        const total = subtotal + totalTax;
+
+        return this.prisma.invoice.update({
+            where: { id },
+            data: {
+                invoiceNumber: data.invoiceNumber,
+                amount: total,
+                subtotal,
+                tax: totalTax,
+                total,
+                lineItems,
+                clientId: data.clientId,
+            },
+        });
+    }
+
     async updateStatus(id: string, businessId: string, status: any) {
         console.log(`InvoiceService: Updating status for invoice ${id} to ${status}`);
         const result = await this.prisma.invoice.updateMany({

@@ -9,6 +9,7 @@ export class ClientService {
     async findAll(businessId: string) {
         return this.prisma.client.findMany({
             where: { businessId },
+            orderBy: { createdAt: 'desc' },
         });
     }
 
