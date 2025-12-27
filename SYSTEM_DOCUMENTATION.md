@@ -19,6 +19,7 @@ This documentation serves as the master guide for the Client Portal SaaS platfor
 - **Database (PostgreSQL via Neon/Vercel):** Relational storage for all business-critical data.
 - **Cloud Storage (Cloudinary):** Handles all shared files and branding assets.
 - **Real-time (Pusher):** Manages live event broadcasting for notifications and comments.
+- **State & Caching (TanStack Query):** Handles frontend server-state, caching, and background revalidation.
 
 **Data Flow Example (File Upload):**
 1. User uploads a file in the UI.
@@ -36,6 +37,7 @@ This documentation serves as the master guide for the Client Portal SaaS platfor
 | **NestJS** | Express-based but with Dependency Injection and strict Modules. | The backend loses structural integrity; becomes a "flat" script. |
 | **Prisma ORM** | Schema-driven development with full IDE type-safety. | Any DB change becomes a "find-and-replace" nightmare in the code. |
 | **Pusher** | Eliminates the need to manage WebSocket heartbeat/reconnection logic. | Real-time features (chat, icons) require manual WebSocket management. |
+| **TanStack Query** | Centralized server-state management and caching. | UX degrades; redundant API calls on every navigation cause delays. |
 | **Tailwind CSS** | Built-in design tokens (colors, spacing) for brand consistency. | Global CSS files grow too large; UI becomes inconsistent. |
 
 ---
@@ -52,6 +54,8 @@ This documentation serves as the master guide for the Client Portal SaaS platfor
 - `src/app/dashboard/`: Admin interface for the service provider.
 - `src/app/portal/`: The client-facing interface.
 - `src/lib/api.ts`: Centralized Axios instance with JWT interceptors.
+- `src/hooks/useQueries.ts`: Custom React Query hooks for unified data fetching.
+- `src/components/providers/QueryProvider.tsx`: Initializer for the React Query client.
 - `src/components/providers/BrandProvider.tsx`: Injects dynamic CSS variables for business branding.
 
 ---
@@ -89,12 +93,12 @@ The schema is built on a hierarchical model:
 ---
 
 ## 8. State Management & Data Handling
-- **Server-Side State:** Prisma acts as the source of truth.
-- **Client-Side State:**
-    - **UI State:** React `useState` (e.g., open modals, tab indexing).
-    - **Cache:** No global cache (e.g., Redux) is used; the app relies on Axios's fresh fetches and React's local state.
+- **Server-Side State (DB):** Prisma acts as the source of truth for persistent records.
+- **Frontend Server-State (Cache):** **TanStack Query** manages the API response cache.
+    - **Caching Logic:** Data is cached globally and shared across components (e.g., `useBusinessProfile` is called in layout and pages but only fetches once).
+    - **Invalidation:** Mutations (Create/Update/Delete) trigger explicit `queryClient.invalidateQueries` to ensure the UI stays in sync without a manual refresh.
+- **Client-Side UI State:** React `useState` for ephemeral UI toggles (modals, search terms).
 - **Persistence:** JWT and basic user roles are stored in `localStorage`.
-- **Error Handling:** Centralized NestJS `ExceptionFilters` ensure API errors always return a `{ message: string }` format that the Frontend can display via `toast.error()`.
 
 ---
 
@@ -126,4 +130,5 @@ The schema is built on a hierarchical model:
 - **Hybrid Real-time:** Combined persistent database notifications with instant Pusher-driven UI updates.
 - **Automated Billing:** Built a custom PDF generation engine that automates the lifecycle from `DRAFT` to `PAID`.
 - **Type-Safe Fullstack:** Used Typescript across the entire stack (Next.js/NestJS/Prisma) to catch errors at compile time.
+- **Performance Optimized:** Implemented a robust caching layer using TanStack Query, eliminating redundant network requests and enabling instant navigation.
 - **Brand Identity:** Implemented a dynamic branding system where clients see the business's colors and logos fetched at runtime.
