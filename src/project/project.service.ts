@@ -3,6 +3,8 @@ import { Injectable, forwardRef, Inject } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UploadService } from '../upload/upload.service';
 import { PusherService } from '../realtime/pusher.service';
+import { NotificationService } from '../notification/notification.service';
+import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class ProjectService {
@@ -10,6 +12,8 @@ export class ProjectService {
         private prisma: PrismaService,
         private uploadService: UploadService,
         private pusher: PusherService,
+        private notificationService: NotificationService,
+        private mailService: MailService,
     ) { }
 
     async findAll(businessId: string) {
@@ -20,7 +24,7 @@ export class ProjectService {
     }
 
     async create(businessId: string, data: any) {
-        return this.prisma.project.create({
+        const project = await this.prisma.project.create({
             data: {
                 title: data.title,
                 description: data.description,
@@ -28,7 +32,37 @@ export class ProjectService {
                 businessId,
                 clientId: data.clientId,
             },
+            include: { client: true, business: true }
         });
+
+        if (project.client && project.client.userId) {
+            // 1. Create In-App Notification
+            await this.notificationService.create({
+                type: 'PROJECT_CREATED',
+                message: `New project "${project.title}" has been created for you.`,
+                userId: project.client.userId,
+                businessId: project.businessId,
+                projectId: project.id,
+            });
+
+            // 2. Send Welcome Email
+            await this.mailService.sendEmail(
+                project.client.email,
+                `Project Created: ${project.title}`,
+                `
+                <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                    <h2 style="color: ${project.business.brandColor || '#4F46E5'}">New Project Assigned</h2>
+                    <p>Hello ${project.client.name},</p>
+                    <p>A new project <strong>"${project.title}"</strong> has been created and assigned to you.</p>
+                    <p>You can track the progress and view shared files in your client portal.</p>
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+                    <p style="font-size: 12px; color: #666;">This is an automated message from ${project.business.name}.</p>
+                </div>
+                `
+            );
+        }
+
+        return project;
     }
 
     async findOne(id: string, businessId: string) {
@@ -42,6 +76,7 @@ export class ProjectService {
         const project = await this.prisma.project.update({
             where: { id },
             data: { status },
+            include: { client: true }
         });
 
         // Log activity
@@ -57,6 +92,17 @@ export class ProjectService {
 
         // Trigger real-time update
         await this.pusher.trigger(`project-${id}`, 'status.updated', { status });
+
+        // Send Notification to Client
+        if (project.client && project.client.userId) {
+            await this.notificationService.create({
+                type: 'STATUS_CHANGE',
+                message: `Project "${project.title}" status updated to ${status}.`,
+                userId: project.client.userId,
+                businessId: project.businessId,
+                projectId: project.id,
+            });
+        }
 
         return project;
     }

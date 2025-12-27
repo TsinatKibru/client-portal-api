@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PusherService } from '../realtime/pusher.service';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class CommentService {
     constructor(
         private prisma: PrismaService,
         private pusher: PusherService,
+        private notificationService: NotificationService,
     ) { }
 
     async create(userId: string, data: { projectId: string; content: string; fileId?: string }) {
@@ -30,7 +32,7 @@ export class CommentService {
 
         const project = await this.prisma.project.findUnique({
             where: { id: data.projectId },
-            select: { businessId: true },
+            include: { client: true, business: { include: { users: true } } },
         });
 
         // Trigger real-time event
@@ -50,6 +52,36 @@ export class CommentService {
                 businessId: project?.businessId || '',
             },
         });
+
+        // Notifications
+        if (project) {
+            const isClientComment = project.client?.userId === userId;
+
+            if (isClientComment) {
+                // Notify Admins/Owners
+                const admins = project.business.users.filter(u => u.role !== 'CLIENT');
+                for (const admin of admins) {
+                    await this.notificationService.create({
+                        type: 'COMMENT_ADDED',
+                        message: `Client ${comment.user.email} commented on project "${project.title}"`,
+                        userId: admin.id,
+                        businessId: project.businessId,
+                        projectId: project.id,
+                    });
+                }
+            } else {
+                // Admin commented, notify Client
+                if (project.client?.userId) {
+                    await this.notificationService.create({
+                        type: 'COMMENT_ADDED',
+                        message: `New update from expert on project "${project.title}"`,
+                        userId: project.client.userId,
+                        businessId: project.businessId,
+                        projectId: project.id,
+                    });
+                }
+            }
+        }
 
         return comment;
     }

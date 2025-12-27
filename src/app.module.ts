@@ -13,6 +13,9 @@ import { UploadModule } from './upload/upload.module';
 import { PortalModule } from './portal/portal.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { CommentModule } from './comment/comment.module';
+import { NotificationModule } from './notification/notification.module';
+import { StatsModule } from './stats/stats.module';
+import { MailModule } from './mail/mail.module';
 
 @Module({
   imports: [
@@ -29,7 +32,10 @@ import { CommentModule } from './comment/comment.module';
     UploadModule,
     PortalModule,
     RealtimeModule,
-    CommentModule
+    CommentModule,
+    NotificationModule,
+    StatsModule,
+    MailModule
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Role, ProjectStatus, InvoiceStatus, Client, Project } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -30,7 +30,7 @@ async function main() {
         create: {
             email: 'owner@acme.com',
             password,
-            role: 'OWNER',
+            role: Role.OWNER,
             businessId: business.id,
         },
     });
@@ -44,79 +44,152 @@ async function main() {
         create: {
             email: 'admin@acme.com',
             password,
-            role: 'ADMIN',
+            role: Role.ADMIN,
             businessId: business.id,
         },
     });
 
     console.log('Created Admin:', admin.email);
 
-    // 4. Create Client 1
-    const clientUser1 = await prisma.user.upsert({
-        where: { email: 'client1@gmail.com' },
-        update: {},
-        create: {
-            email: 'client1@gmail.com',
-            password,
-            role: 'CLIENT',
-            businessId: business.id,
-        },
-    });
+    // 4. Create Multiple Clients
+    const clientData = [
+        { name: 'John Doe', email: 'client1@gmail.com', phone: '+123456789' },
+        { name: 'Jane Smith', email: 'client2@gmail.com', phone: '+987654321' },
+        { name: 'Tech Solutions Inc', email: 'contact@techsol.com', phone: '+112233445' },
+    ];
 
-    const client1 = await prisma.client.create({
-        data: {
-            name: 'John Doe',
-            email: 'client1@gmail.com',
-            phone: '+123456789',
-            businessId: business.id,
-            userId: clientUser1.id,
-        },
-    });
+    const clients: Client[] = [];
+    for (const data of clientData) {
+        const user = await prisma.user.upsert({
+            where: { email: data.email },
+            update: {},
+            create: {
+                email: data.email,
+                password,
+                role: Role.CLIENT,
+                businessId: business.id,
+            },
+        });
 
-    console.log('Created Client 1:', client1.name);
+        // Check if client already exists by userId
+        let client = await prisma.client.findUnique({
+            where: { userId: user.id }
+        });
 
-    // 5. Create Project for Client 1
-    const project1 = await prisma.project.create({
-        data: {
-            title: 'Website Redesign',
-            description: 'The rebranding of the main corporate website.',
-            status: 'IN_PROGRESS',
-            businessId: business.id,
-            clientId: client1.id,
-        },
-    });
+        if (client) {
+            client = await prisma.client.update({
+                where: { id: client.id },
+                data: {
+                    name: data.name,
+                    phone: data.phone,
+                }
+            });
+        } else {
+            client = await prisma.client.create({
+                data: {
+                    name: data.name,
+                    email: data.email,
+                    phone: data.phone,
+                    businessId: business.id,
+                    userId: user.id,
+                },
+            });
+        }
+        clients.push(client);
+        console.log('Created/Updated Client:', client.name);
+    }
 
-    console.log('Created Project:', project1.title);
+    // 5. Create Projects
+    const projectData = [
+        { title: 'Website Redesign', status: ProjectStatus.IN_PROGRESS, clientIdx: 0 },
+        { title: 'Mobile App Development', status: ProjectStatus.PENDING, clientIdx: 1 },
+        { title: 'Cloud Migration', status: ProjectStatus.DELIVERED, clientIdx: 2 },
+        { title: 'SEO Optimization', status: ProjectStatus.IN_PROGRESS, clientIdx: 0 },
+    ];
 
-    // 6. Create Invoice for Client 1
-    const invoice1 = await prisma.invoice.create({
-        data: {
-            invoiceNumber: 'INV-2023-001',
-            amount: 1500.00,
-            status: 'SENT',
-            subtotal: 1500.00,
-            tax: 0,
-            total: 1500.00,
-            businessId: business.id,
-            clientId: client1.id,
-            lineItems: [
-                { description: 'Design Phase', quantity: 1, rate: 1000, tax: 0 },
-                { description: 'Consulting', quantity: 5, rate: 100, tax: 0 }
-            ],
-        },
-    });
+    const projects: Project[] = [];
+    for (const data of projectData) {
+        // We use create here; for a more robust seed you might want to findUnique by title/client
+        const project = await prisma.project.create({
+            data: {
+                title: data.title,
+                description: `Description for ${data.title}`,
+                status: data.status,
+                businessId: business.id,
+                clientId: clients[data.clientIdx].id,
+            },
+        });
+        projects.push(project);
+        console.log('Created Project:', project.title);
+    }
 
-    console.log('Created Invoice:', invoice1.invoiceNumber);
+    // 6. Create Invoices
+    const invoiceData = [
+        { num: 'INV-2023-001', amount: 1500, status: InvoiceStatus.SENT, clientIdx: 0 },
+        { num: 'INV-2023-002', amount: 2500, status: InvoiceStatus.PAID, clientIdx: 1 },
+        { num: 'INV-2023-003', amount: 500, status: InvoiceStatus.DRAFT, clientIdx: 2 },
+    ];
 
-    // 7. Create Activity
-    await prisma.activity.create({
+    for (const data of invoiceData) {
+        const invoice = await prisma.invoice.create({
+            data: {
+                invoiceNumber: data.num,
+                amount: data.amount,
+                status: data.status,
+                subtotal: data.amount,
+                tax: 0,
+                total: data.amount,
+                businessId: business.id,
+                clientId: clients[data.clientIdx].id,
+                lineItems: [
+                    { description: 'Service Item', quantity: 1, rate: data.amount, tax: 0 }
+                ],
+            },
+        });
+        console.log('Created Invoice:', invoice.invoiceNumber);
+    }
+
+    // 7. Create Activities
+    for (const project of projects) {
+        await prisma.activity.create({
+            data: {
+                type: 'PROJECT_CREATED',
+                description: `Project "${project.title}" was created`,
+                userId: owner.id,
+                projectId: project.id,
+                businessId: business.id,
+            },
+        });
+    }
+
+    // 8. Create Comments
+    if (projects.length > 0) {
+        await prisma.comment.create({
+            data: {
+                content: 'Looking forward to the results!',
+                userId: clients[0].userId!,
+                projectId: projects[0].id,
+            }
+        });
+        await prisma.comment.create({
+            data: {
+                content: 'We are starting the design phase now.',
+                userId: admin.id,
+                projectId: projects[0].id,
+            }
+        });
+    }
+
+    // 9. Create Notifications
+    await prisma.notification.create({
         data: {
             type: 'PROJECT_CREATED',
-            description: 'Project "Website Redesign" was created',
-            userId: owner.id,
-            projectId: project1.id,
+            message: 'A new project "Website Redesign" has been created for you.',
+            userId: clients[0].userId!,
             businessId: business.id,
-        },
+            projectId: projects[0].id,
+            read: false,
+        }
     });
 
     console.log('Seeding finished.');

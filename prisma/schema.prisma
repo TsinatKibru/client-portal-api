@@ -48,6 +48,7 @@ model Business {
   invoices  Invoice[]
   files     File[]
   activities Activity[]
+  notifications Notification[]
 }
 
 model User {
@@ -60,6 +61,7 @@ model User {
   client     Client?   @relation("UserToClient")
   comments   Comment[]
   activities Activity[]
+  notifications Notification[]
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 }
@@ -149,4 +151,17 @@ model Invoice {
   client        Client        @relation(fields: [clientId], references: [id])
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  type       String   // e.g., "INVOICE_SENT", "FILE_UPLOAD", "COMMENT_ADDED"
+  message    String
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  projectId  String?
+  read       Boolean  @default(false)
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id])
+  createdAt  DateTime @default(now())
 }

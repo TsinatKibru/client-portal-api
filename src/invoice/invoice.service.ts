@@ -1,10 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import PDFDocument from 'pdfkit';
+import { NotificationService } from '../notification/notification.service';
+import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class InvoiceService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private notificationService: NotificationService,
+        private mailService: MailService
+    ) { }
 
     async findAll(businessId: string) {
         return this.prisma.invoice.findMany({
@@ -52,10 +58,46 @@ export class InvoiceService {
     }
 
     async updateStatus(id: string, businessId: string, status: any) {
-        return this.prisma.invoice.updateMany({
+        const result = await this.prisma.invoice.updateMany({
             where: { id, businessId },
             data: { status },
         });
+
+        if (status === 'SENT') {
+            const invoice = await this.prisma.invoice.findFirst({
+                where: { id, businessId },
+                include: { client: true, business: true }
+            });
+
+            if (invoice && invoice.client && invoice.client.userId) {
+                // 1. Create In-App Notification
+                await this.notificationService.create({
+                    type: 'INVOICE_SENT',
+                    message: `New invoice ${invoice.invoiceNumber} for ${invoice.total.toFixed(2)} ${invoice.business.currency} is ready.`,
+                    userId: invoice.client.userId,
+                    businessId: invoice.businessId,
+                });
+
+                // 2. Send Email via Resend
+                await this.mailService.sendEmail(
+                    invoice.client.email,
+                    `New Invoice From ${invoice.business.name}`,
+                    `
+                    <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                        <h2 style="color: ${invoice.business.brandColor || '#4F46E5'}">New Invoice Ready</h2>
+                        <p>Hello ${invoice.client.name},</p>
+                        <p>Your invoice <strong>${invoice.invoiceNumber}</strong> is ready for review.</p>
+                        <p><strong>Total Amount:</strong> ${invoice.total.toFixed(2)} ${invoice.business.currency}</p>
+                        <p>You can view and download your invoice in your client portal.</p>
+                        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+                        <p style="font-size: 12px; color: #666;">This is an automated delivery from ${invoice.business.name}.</p>
+                    </div>
+                    `
+                );
+            }
+        }
+
+        return result;
     }
 
     async generatePdf(id: string, businessId: string): Promise<Buffer> {

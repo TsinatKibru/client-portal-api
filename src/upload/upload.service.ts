@@ -2,12 +2,14 @@ import { Injectable, forwardRef, Inject } from '@nestjs/common';
 import { v2 as cloudinary } from 'cloudinary';
 import { PrismaService } from '../prisma/prisma.service';
 import { PusherService } from '../realtime/pusher.service';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class UploadService {
     constructor(
         private prisma: PrismaService,
         private pusher: PusherService,
+        private notificationService: NotificationService,
     ) {
         cloudinary.config({
             cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -58,6 +60,22 @@ export class UploadService {
 
                     // Trigger Pusher
                     await this.pusher.trigger(`project-${projectId}`, 'file.uploaded', savedFile);
+
+                    // Send Notification to Client (if admin uploaded)
+                    const project = await this.prisma.project.findUnique({
+                        where: { id: projectId },
+                        include: { client: true }
+                    });
+
+                    if (project && project.client && project.client.userId && project.client.userId !== userId) {
+                        await this.notificationService.create({
+                            type: 'FILE_UPLOAD',
+                            message: `New file shared in project "${project.title}": ${file.originalname}`,
+                            userId: project.client.userId,
+                            businessId,
+                            projectId,
+                        });
+                    }
 
                     resolve(savedFile);
                 },
